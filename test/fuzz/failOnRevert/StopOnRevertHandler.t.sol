@@ -24,7 +24,7 @@ contract StopOnRevertHandler is Test {
 
     uint96 public constant MAX_DEPOSIT_SIZE = type(uint96).max;
 
-    constructor (DSCEngine _dscEngine, DecentralizedStableCoin _dsc){
+    constructor(DSCEngine _dscEngine, DecentralizedStableCoin _dsc) {
         dscEngine = _dscEngine;
         dsc = _dsc;
 
@@ -36,13 +36,12 @@ contract StopOnRevertHandler is Test {
         btcUsdPriceFeed = MockV3Aggregator(dscEngine.getCollateralTokenPriceFeed(address(wbtc)));
     }
 
-
     ///////////////
     // DSCEngine //
     ///////////////
 
     function mintAndDepositCollateral(uint256 collateralSeed, uint256 amountCollateral) public {
-        //Must be more than 0 
+        //Must be more than 0
         amountCollateral = bound(amountCollateral, 1, MAX_DEPOSIT_SIZE);
         ERC20Mock collateral = _getCollateralFromSeed(collateralSeed);
 
@@ -51,7 +50,6 @@ contract StopOnRevertHandler is Test {
         collateral.approve(address(dscEngine), amountCollateral);
         dscEngine.depositCollateral(address(collateral), amountCollateral);
         vm.stopPrank();
-
     }
 
     function redeemCollateral(uint256 collateralSeed, uint256 amountCollateral) public {
@@ -60,7 +58,7 @@ contract StopOnRevertHandler is Test {
         uint256 maxCollateral = dscEngine.getCollateralBalanceOfUser(address(collateral), msg.sender);
 
         amountCollateral = bound(amountCollateral, 0, maxCollateral);
-        if(amountCollateral == 0){
+        if (amountCollateral == 0) {
             return;
         }
         dscEngine.redeemCollateral(address(collateral), amountCollateral);
@@ -68,7 +66,7 @@ contract StopOnRevertHandler is Test {
 
     function burnDsc(uint256 amountDsc) public {
         amountDsc = bound(amountDsc, 0, dsc.balanceOf(msg.sender));
-        if(amountDsc == 0) {
+        if (amountDsc == 0) {
             return;
         }
         dscEngine.burnDsc(amountDsc);
@@ -79,14 +77,14 @@ contract StopOnRevertHandler is Test {
     //     if(amountDsc == 0){
     //         return;
     //     }
-    //     vm.prank(dsc.owner());
+    //     vm.prank(dsc.owner());cl
     //     dsc.mint(msg.sender, amountDsc);
     // }
 
     function liquidate(uint256 collareralSeed, address userToBeLiquidated, uint256 debtToCover) public {
         uint256 minHealthFactor = dscEngine.getMinHealthFactor();
         uint256 userHealthFactor = dscEngine.getHealthFactor(userToBeLiquidated);
-        if(userHealthFactor >= minHealthFactor){
+        if (userHealthFactor >= minHealthFactor) {
             return;
         }
         debtToCover = bound(debtToCover, 1, uint256(type(uint96).max));
@@ -100,11 +98,11 @@ contract StopOnRevertHandler is Test {
 
     function transferDsc(uint256 amountDsc, address to) public {
         amountDsc = bound(amountDsc, 0, dsc.balanceOf(msg.sender));
-        if(amountDsc == 0){
+        if (amountDsc == 0) {
             return;
         }
 
-        if(to == address(0)){
+        if (to == address(0)) {
             to = address(1);
         }
         vm.prank(msg.sender);
@@ -123,15 +121,12 @@ contract StopOnRevertHandler is Test {
         priceFeed.updateAnswer(intNewPrice);
     }
 
-
     //Helper Function
 
-    function _getCollateralFromSeed(uint256 collateralSeed) private view returns (ERC20Mock){
-        if(collateralSeed % 2 == 0){
+    function _getCollateralFromSeed(uint256 collateralSeed) private view returns (ERC20Mock) {
+        if (collateralSeed % 2 == 0) {
             return weth;
         }
         return wbtc;
     }
-
-
 }
