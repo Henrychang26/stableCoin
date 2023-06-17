@@ -452,18 +452,44 @@ contract DSCEngineTest is Test {
     modifier liquidated() {
         vm.startPrank(user);
         ERC20Mock(weth).approve(address(dsce), amountCollateral);
+        // uint256 dscToMint = 5000e18;
         dsce.depositCollateralAndMintDsc(weth, amountCollateral, amountToMint);
         vm.stopPrank();
         int256 ethUsdUpdatedPrice = 18e8;
+        // int256 ethUsdUpdatedPrice = 30e8;
 
+        // WETH : $2000USD/ETH 10ETH  => $100 DSC
+        //20,000/100 => HealthFactor 100
+        (uint256 startingHealthFactor) = dsce.getHealthFactor(user);
+        console.log(startingHealthFactor);
+
+        // (,int256 price1 , , ,) = MockV3Aggregator(ethUsdPriceFeed).latestRoundData();
+        // console.logInt(price1);
+        (uint256 totalDscMinted1, uint256 collateralValueInUsd1) = dsce.getAccountInformation(user);
+        console.log("totalDscMinted1", totalDscMinted1); //$100 DSC
+        console.log("collateralValueInUsd1", collateralValueInUsd1); //180 collateral => healthFactor 0.9
+        //$2,000 => $18
         MockV3Aggregator(ethUsdPriceFeed).updateAnswer(ethUsdUpdatedPrice);
         uint256 userHealthFactor = dsce.getHealthFactor(user);
+        console.log(userHealthFactor);
 
+        // (,int256 price2 , , ,) = MockV3Aggregator(ethUsdPriceFeed).latestRoundData();
+        // console.logInt(price2);
+
+        //Price crashes here
         ERC20Mock(weth).mint(liquidator, collateralToCover);
+        console.log("collateralToCover", collateralToCover);
+        // console.log("collateralToCover :", collateralToCover);
 
+        (uint256 totalDscMinted, uint256 collateralValueInUsd) = dsce.getAccountInformation(user);
+        console.log("totalDscMinted", totalDscMinted); //$100 DSC
+        console.log("collateralValueInUsd", collateralValueInUsd); //180 collateral => healthFactor 0.9
+        //liquidator should receive $110 in collateral value
         vm.startPrank(liquidator);
         ERC20Mock(weth).approve(address(dsce), collateralToCover);
-        dsce.depositCollateralAndMintDsc(weth, collateralToCover, amountToMint);
+        //20 ETH at $18 = $360 => max mint amount $180 in order to keep healthFacotr ok
+        dsce.depositCollateralAndMintDsc(weth, collateralToCover, amountToMint); //Can mint up to $180 DSC but minting only $100 here
+        console.log("amountToMint", amountToMint);
         dsc.approve(address(dsce), amountToMint);
         dsce.liquidate(weth, user, amountToMint); // We are covering their whole debt
         vm.stopPrank();
@@ -481,6 +507,14 @@ contract DSCEngineTest is Test {
 
     function testUserStillHasSomeEthAfterLiquidation() public liquidated {
         // Get how much WETH the user lost
+        // (uint256 totalDscMinted, uint256 collateralValueInUsd) = dsce.getAccountInformation(liquidator);
+        // console.log("totalDscMinted: L", totalDscMinted);
+        // console.log("collateralValueInUsd: L", collateralValueInUsd);
+        uint256 liquidatorBalance = ERC20Mock(weth).balanceOf(liquidator);
+        console.log("liquidatorBalance", liquidatorBalance);
+
+        // uint256 liquidatorBalance = dsce.s_collateralDeposited(weth);
+
         uint256 amountLiquidated = dsce.getTokenAmountFromUsd(weth, amountToMint)
             + (dsce.getTokenAmountFromUsd(weth, amountToMint) / dsce.getLiquidationBonus());
 
@@ -488,6 +522,8 @@ contract DSCEngineTest is Test {
         uint256 expectedUserCollateralValueInUsd = dsce.getUsdValue(weth, amountCollateral) - (usdAmountLiquidated);
 
         (, uint256 userCollateralValueInUsd) = dsce.getAccountInformation(user);
+        // console.log(userCollateralValueInUsd);
+
         uint256 hardCodedExpectedValue = 70000000000000000020;
         assertEq(userCollateralValueInUsd, expectedUserCollateralValueInUsd);
         assertEq(userCollateralValueInUsd, hardCodedExpectedValue);
@@ -555,5 +591,38 @@ contract DSCEngineTest is Test {
     function testGetDsc() public {
         address dscAddress = dsce.getDsc();
         assertEq(dscAddress, address(dsc));
+    }
+
+    function testGetTotalTVLInProtocol() public {
+        vm.startPrank(user);
+        ERC20Mock(weth).approve(address(dsce), amountCollateral);
+        dsce.depositCollateral(weth, amountCollateral);
+        vm.stopPrank();
+        uint256 totalTVL = dsce.getTotalTVLInProtocol();
+        console.log(totalTVL);
+        (, int256 price, , ,) = MockV3Aggregator(ethUsdPriceFeed).latestRoundData();
+        // console.logInt(price);
+        uint256 expectedTVL = ((uint256(price) * 1e10) * amountCollateral / MIN_HEALTH_FACTOR);
+        assertEq(totalTVL, expectedTVL);
+    }
+
+    function testGetTotalDscMinted() public {
+        vm.startPrank(user);
+        ERC20Mock(weth).approve(address(dsce), amountCollateral);
+        dsce.depositCollateralAndMintDsc(weth, amountCollateral, amountToMint);
+        vm.stopPrank();
+        uint256 totalDscMinted = dsce.getTotalDscMinted();
+        console.log(totalDscMinted);
+        assertEq(totalDscMinted, amountToMint);
+    }
+
+    function testGetProtocolOverallHealthFactor() public {
+        vm.startPrank(user);
+        ERC20Mock(weth).approve(address(dsce), amountCollateral);
+        dsce.depositCollateralAndMintDsc(weth, amountCollateral, amountToMint);
+        vm.stopPrank();
+        uint256 protocolOverallHealthFactor = dsce.getProtocolOverallHealthFactor();
+        console.log(protocolOverallHealthFactor);
+        assertEq(protocolOverallHealthFactor, 100e18);
     }
 }

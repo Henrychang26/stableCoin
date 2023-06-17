@@ -9,13 +9,13 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {MockV3Aggregator} from "../../mocks/MockV3Aggregator.sol";
 import {DSCEngine, AggregatorV3Interface} from "../../../src/DSCEngine.sol";
 import {DecentralizedStableCoin} from "../../../src/DecentralizedStableCoin.sol";
-import {Randomish, EnumerableSet} from "../Randomish.sol";
+// import {Randomish, EnumerableSet} from "../Randomish.sol";
 import {MockV3Aggregator} from "../../mocks/MockV3Aggregator.sol";
 import {console} from "forge-std/console.sol";
 
 contract ContinueOnRevertHandler is Test {
     using EnumerableSet for EnumerableSet.AddressSet;
-    using Randomish for EnumerableSet.AddressSet;
+    // using Randomish for EnumerableSet.AddressSet;
 
     // Deployed contracts to interact with
     DSCEngine public dscEngine;
@@ -31,11 +31,11 @@ contract ContinueOnRevertHandler is Test {
         dscEngine = _dscEngine;
         dsc = _dsc;
 
-        address[] memory collateralTokens = dsce.getCollateralTokens();
+        address[] memory collateralTokens = dscEngine.getCollateralTokens();
         weth = ERC20Mock(collateralTokens[0]);
         wbtc = ERC20Mock(collateralTokens[1]);
 
-        ethUsdPriceFeed = MockV3Aggregator(dscEngine.getCollateralTokenPriceFeed(weth));
+        ethUsdPriceFeed = MockV3Aggregator(dscEngine.getCollateralTokenPriceFeed(address(weth)));
         btcUsdPriceFeed = MockV3Aggregator(dscEngine.getCollateralTokenPriceFeed(address(wbtc)));
     }
 
@@ -45,42 +45,35 @@ contract ContinueOnRevertHandler is Test {
 
     function mintAndDepositCollateral(uint256 colleteralSeed, uint256 amountCollateral) public {
         amountCollateral = bound(amountCollateral, 0, MAX_DEPOSIT_SIZE);
-        ERC20Mock collateral = _getCollateralFromSeed();
+        ERC20Mock collateral = _getCollateralFromSeed(colleteralSeed);
         collateral.mint(msg.sender, amountCollateral);
         dscEngine.depositCollateral(address(collateral), amountCollateral);
     }
 
-    function redeemCollateral(uint256 collateralSeed, uint256 amountCollateral) public view {
+    function redeemCollateral(uint256 collateralSeed, uint256 amountCollateral) public {
         amountCollateral = bound(amountCollateral, 0, MAX_DEPOSIT_SIZE);
         ERC20Mock collateral = _getCollateralFromSeed(collateralSeed);
         dscEngine.redeemCollateral(address(collateral), amountCollateral);
     }
 
-        function burnDsc(uint256 amountDsc) public {
+    function burnDsc(uint256 amountDsc) public {
         amountDsc = bound(amountDsc, 0, dsc.balanceOf(msg.sender));
         dsc.burn(amountDsc);
     }
 
-        function mintDsc(uint256 amountDsc) public {
+    function mintDsc(uint256 amountDsc) public {
         amountDsc = bound(amountDsc, 0, MAX_DEPOSIT_SIZE);
         dsc.mint(msg.sender, amountDsc);
     }
 
-        function liquidate(
-        uint256 collateralSeed,
-        address userToBeLiquidated,
-        uint256 debtToCover
-    ) public {
+    function liquidate(uint256 collateralSeed, address userToBeLiquidated, uint256 debtToCover) public {
         ERC20Mock collateral = _getCollateralFromSeed(collateralSeed);
-        dscEngine.liquidate(
-            address(collateral),
-            userToBeLiquidated,
-            debtToCover
-        );
+        dscEngine.liquidate(address(collateral), userToBeLiquidated, debtToCover);
     }
     /////////////////////////////
     // DecentralizedStableCoin //
     /////////////////////////////
+
     function transferDsc(uint256 amountDsc, address to) public {
         amountDsc = bound(amountDsc, 0, dsc.balanceOf(msg.sender));
         vm.prank(msg.sender);
@@ -90,16 +83,11 @@ contract ContinueOnRevertHandler is Test {
     ////////////////
     // Aggregator //
     ////////////////
-    function updateCollateralPrice(
-        uint128 newPrice,
-        uint256 collateralSeed
-    ) public {
+    function updateCollateralPrice(uint128 newPrice, uint256 collateralSeed) public {
         // int256 intNewPrice = int256(uint256(newPrice));
         int256 intNewPrice = 0;
         ERC20Mock collateral = _getCollateralFromSeed(collateralSeed);
-        MockV3Aggregator priceFeed = MockV3Aggregator(
-            dscEngine.getCollateralTokenPriceFeed(address(collateral))
-        );
+        MockV3Aggregator priceFeed = MockV3Aggregator(dscEngine.getCollateralTokenPriceFeed(address(collateral)));
 
         priceFeed.updateAnswer(intNewPrice);
     }
@@ -107,16 +95,15 @@ contract ContinueOnRevertHandler is Test {
     //Helper function
 
     function _getCollateralFromSeed(uint256 collateralSeed) private view returns (ERC20Mock) {
-        if (collatareral % 2 == 0) {
+        if (collateralSeed % 2 == 0) {
             return weth;
         }
         return wbtc;
     }
 
-        function callSummary() external view {
+    function callSummary() external view {
         console.log("Weth total deposited", weth.balanceOf(address(dscEngine)));
         console.log("Wbtc total deposited", wbtc.balanceOf(address(dscEngine)));
         console.log("Total supply of DSC", dsc.totalSupply());
     }
-
 }

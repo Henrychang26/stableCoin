@@ -28,7 +28,7 @@ contract ContinueOnRevertInvariants is StdInvariant, Test {
         DeployDSC deployer = new DeployDSC();
         (dsc, dsce, helperConfig) = deployer.run();
         (ethUsdPriceFeed, btcUsdPriceFeed, weth, wbtc,) = helperConfig.activeNetworkConfig();
-        handler = new ContinueOnRevertHandler();
+        handler = new ContinueOnRevertHandler(dsce, dsc);
         targetContract(address(handler));
     }
 

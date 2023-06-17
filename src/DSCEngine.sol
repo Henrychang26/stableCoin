@@ -61,6 +61,8 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine__DscMintFailed();
     error DSCEngine__HealthFactorOk();
     error DSCEngine__HealthFactorNotImproved();
+    error DSCEngine__ProtocolIsNotHealthyForIncentive();
+    error DSCEngine__MintingDscIsTemporaryPausedToRestoreProtocolHealthFactor();
 
     using OracleLib for AggregatorV3Interface;
     //State Variable
@@ -79,6 +81,8 @@ contract DSCEngine is ReentrancyGuard {
     uint256 private constant LIQUIDATION_THRESHOLD = 50; //200% overcollateralized
     uint256 private constant LIQUIDATION_PRECISION = 100;
     uint256 private constant MIN_HEALTH_FACTOR = 1e18;
+    uint256 private constant HEALTHY_PROTOCOL = 0.75 * 1e18;
+    uint256 private constant MIN_PROTOCOL_HEALTH_FACTOR = 0.5 * 1e18;
     uint256 private constant LIQUIDATION_BONUS = 10; //10% bonus
 
     //Events
@@ -98,6 +102,32 @@ contract DSCEngine is ReentrancyGuard {
     modifier isAllowedToken(address token) {
         if (s_priceFeeds[token] == address(0)) {
             revert DSCEngine__TokenNotAllowed();
+        }
+        _;
+    }
+    
+    /*
+     * @notice this modifier is make sure there is incentive for liquidators
+     * Mathematically, there is no incentive for liquidator when protocol is 100% or lower collateralized
+     */
+    modifier incentiveAvailable(){
+        uint256 protocolOverallHealthFactor = getProtocolOverallHealthFactor();
+        if(protocolOverallHealthFactor <= MIN_PROTOCOL_HEALTH_FACTOR){
+            revert DSCEngine__ProtocolIsNotHealthyForIncentive();
+        }
+        _;
+    }
+
+    /*
+     * @notice this modifier temporary paused mitning DSC to restore overall protocol health factor
+     * @notice Minting will resume when protocol is 150% over collateralized
+     * burnDsc() and depositCollateral will remain available while protocol is below 150% over collateralized
+     */
+
+    modifier healthyProtocol(){
+        uint256 protocolOverallHealthFactor = getProtocolOverallHealthFactor();
+        if(protocolOverallHealthFactor <= HEALTHY_PROTOCOL){
+            revert DSCEngine__MintingDscIsTemporaryPausedToRestoreProtocolHealthFactor();
         }
         _;
     }
@@ -124,7 +154,7 @@ contract DSCEngine is ReentrancyGuard {
         address tokenCollateralAddress,
         uint256 amountCollateral,
         uint256 amountDscToMint
-    ) external {
+    ) external healthyProtocol {
         depositCollateral(tokenCollateralAddress, amountCollateral);
         mintDsc(amountDscToMint);
     }
@@ -182,7 +212,7 @@ contract DSCEngine is ReentrancyGuard {
      * @notice They have more collateral value than the minimum threshold
      *
     */
-    function mintDsc(uint256 amountDscToMint) public moreThanZero(amountDscToMint) nonReentrant {
+    function mintDsc(uint256 amountDscToMint) public moreThanZero(amountDscToMint) nonReentrant healthyProtocol {
         s_DSCMinted[msg.sender] += amountDscToMint;
         _revertIfHealthFactorIsBroken(msg.sender);
         bool minted = i_dsc.mint(msg.sender, amountDscToMint);
@@ -213,8 +243,9 @@ contract DSCEngine is ReentrancyGuard {
         external
         moreThanZero(debtToCover)
         nonReentrant
+        incentiveAvailable
     {
-        //Checl user's health factor
+        //Check user's health factor
         uint256 startingUserHealthFactor = _healthFactor(user);
         if (startingUserHealthFactor >= MIN_HEALTH_FACTOR) {
             revert DSCEngine__HealthFactorOk();
@@ -402,5 +433,24 @@ contract DSCEngine is ReentrancyGuard {
 
     function getHealthFactor(address user) external view returns (uint256) {
         return _healthFactor(user);
+    }
+
+    function getTotalDscMinted() public view returns(uint256 ){
+        return i_dsc.totalSupply();
+    }
+
+    function getTotalTVLInProtocol() public view returns(uint256 totalTVL){
+        for(uint256 i = 0; i<s_collateralTokens.length; ++i){
+            uint256 amount = IERC20(s_collateralTokens[i]).balanceOf(address(this));
+            // (,int256 price, , , ) = AggregatorV3Interface(s_priceFeeds[s_collateralTokens[i]]).latestRoundData();
+             totalTVL += _getUsdValue(s_collateralTokens[i], amount);
+        }
+    }
+
+    function getProtocolOverallHealthFactor() public view returns (uint256){
+        uint256 dscMinted = getTotalDscMinted();
+        uint256 totalTVL = getTotalTVLInProtocol();
+       
+        return _calculateHealthFactor(dscMinted, totalTVL);
     }
 }
